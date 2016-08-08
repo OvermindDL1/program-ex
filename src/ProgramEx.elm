@@ -1,8 +1,8 @@
-module ProgramEx exposing (programExBuilderWithFlags)
+module ProgramEx exposing (programExBuilderWithFlags, programExBuilderWithFlagsAndNavigation)
 
 
 {-|
-@docs programExBuilderWithFlags
+@docs programExBuilderWithFlags, programExBuilderWithFlagsAndNavigation
 -}
 
 import ProgramEx.States as States exposing (States, doUpdate, doSubscriptions, doView)
