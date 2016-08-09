@@ -14,6 +14,7 @@ module ProgramEx.States exposing
 This module handles the States structure that controls how callbacks will be called
 
 Example usage via in a filter callback:
+
     filters : Msg -> Model -> ( Msg, States Model Msg )
     filters msg model =
         let
