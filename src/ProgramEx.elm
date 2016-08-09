@@ -1,103 +1,158 @@
 module ProgramEx exposing (programExBuilderWithFlags, programExBuilderWithFlagsAndNavigation)
 
-
 {-|
 @docs programExBuilderWithFlags, programExBuilderWithFlagsAndNavigation
 -}
 
 import ProgramEx.States as States exposing (States, doUpdate, doSubscriptions, doView)
-
 import Html
-
+import Dict
 
 
 type alias Model userModel userMsg =
-  { states : States
-  , userModel : userModel
-  , view : Html.Html userMsg
-  , subscriptions : Sub userMsg
-  }
+    { userModel : userModel
+    , view : Html.Html userMsg
+    , subscriptions : Dict.Dict String (Sub userMsg)
+    }
 
 
-flagsInit : ( flags -> (userModel, Cmd userMsg) ) -> flags -> ( Model userModel userMsg, Cmd userMsg )
+flagsInit : (flags -> ( userModel, Cmd userMsg )) -> flags -> ( Model userModel userMsg, Cmd userMsg )
 flagsInit userInit flags =
-  let
-    -- stateInit : ( userModel, Cmd userMsg ) -- Broken in Elm right now due to annotation names not being shared in outer/inner scopes
-    stateInit = userInit flags
+    let
+        -- stateInit : ( userModel, Cmd userMsg ) -- Broken in Elm right now due to annotation names not being shared in outer/inner scopes
+        stateInit =
+            userInit flags
 
-    ( initModel, initCmd ) = stateInit
-  in
-    (
-      { states=States.default
-      , userModel=initModel
-      , view=Html.div [] []
-      , subscriptions=Sub.none
-      }
-    , initCmd
-    )
+        ( initModel, initCmd ) =
+            stateInit
+    in
+        ( { userModel = initModel
+          , view = Html.div [] []
+          , subscriptions = Dict.empty
+          }
+        , initCmd
+        )
+
+
+flagsNavInit : (flags -> navParseResult -> ( userModel, Cmd userMsg )) -> flags -> navParseResult -> ( Model userModel userMsg, Cmd userMsg )
+flagsNavInit userInit flags navData =
+    let
+        -- stateInit : ( userModel, Cmd userMsg ) -- Broken in Elm right now due to annotation names not being shared in outer/inner scopes
+        stateInit =
+            userInit flags navData
+
+        ( initModel, initCmd ) =
+            stateInit
+    in
+        ( { userModel = initModel
+          , view = Html.div [] []
+          , subscriptions = Dict.empty
+          }
+        , initCmd
+        )
 
 
 update :
-  ( userMsg -> userModel -> ( userMsg, States ) )
-  -> ( userMsg -> userModel -> ( userModel, Cmd userMsg ) )
-  -> ( userModel -> Html.Html userMsg)
-  -> ( userModel -> Sub userMsg )
-  -> userMsg
-  -> Model userModel userMsg
-  -> ( Model userModel userMsg, Cmd userMsg )
+    (userMsg -> userModel -> ( userMsg, States userModel userMsg ))
+    -> (userMsg -> userModel -> ( userModel, Cmd userMsg ))
+    -> (userModel -> Html.Html userMsg)
+    -> (userModel -> Sub userMsg)
+    -> userMsg
+    -> Model userModel userMsg
+    -> ( Model userModel userMsg, Cmd userMsg )
 update userFilters userUpdate userView userSubscriptions msg model =
-  let
-    -- stateFiltered : ( userMsg, States ) -- Broken in Elm right now due to annotation names not being shared in outer/inner scopes
-    stateFiltered =
-      userFilters msg model.userModel
+    let
+        -- stateFiltered : ( userMsg, States ) -- Broken in Elm right now due to annotation names not being shared in outer/inner scopes
+        stateFiltered =
+            userFilters msg model.userModel
 
-    ( transMsg, states ) = stateFiltered
+        ( transMsg, states ) =
+            stateFiltered
 
-    -- updateState : ( userModel, Cmd userMsg ) -- Broken in Elm right now due to annotation names not being shared in outer/inner scopes
-    updateState =
-      if doUpdate states then
-        userUpdate msg model.userModel
-      else
-        ( model.userModel, Cmd.none )
+        delegates =
+            case States.getDelegates states of
+                Just delegates ->
+                    delegates
 
-    ( updateModel, updateCmd ) = updateState
+                Nothing ->
+                    { key = ""
+                    , update = Nothing
+                    , subscriptions = Nothing
+                    }
 
-    -- viewData : Html.Html userMsg -- Broken in Elm right now due to annotation names not being shared in outer/inner scopes
-    viewData =
-      if doView states then
-        userView updateModel
-      else
-        model.view
+        delegatesKey =
+            delegates.key
 
-    -- subscriptionsData : Sub userMsg -- Broken in Elm right now due to annotation names not being shared in outer/inner scopes
-    subscriptionsData =
-      if doSubscriptions states then
-        userSubscriptions updateModel
-      else
-        model.subscriptions
+        delegatesUpdate =
+            delegates.update |> Maybe.withDefault userUpdate
 
-  in
-    if doUpdate states then
-        ( { model
-          | states=states
-          , userModel=updateModel
-          , view=viewData
-          , subscriptions=subscriptionsData
-          }
-        , updateCmd
-        )
-    else
-      ( model, Cmd.none )
+        delegatesSubscriptions =
+            delegates.subscriptions |> Maybe.withDefault userSubscriptions
+
+        -- updateData : ( userModel, Cmd userMsg ) -- Broken in Elm right now due to annotation names not being shared in outer/inner scopes
+        updateData =
+            if doUpdate states then
+                delegatesUpdate transMsg model.userModel
+            else
+                ( model.userModel, Cmd.none )
+
+        ( updateModel, updateCmd ) =
+            updateData
+
+        -- viewData : Html.Html userMsg -- Broken in Elm right now due to annotation names not being shared in outer/inner scopes
+        viewData =
+            if doView states then
+                userView updateModel
+            else
+                model.view
+
+        -- subscriptionsData : Dict String (Sub userMsg) -- Broken in Elm right now due to annotation names not being shared in outer/inner scopes
+        subscriptionsData =
+            if doSubscriptions states then
+                Dict.insert delegatesKey (delegatesSubscriptions updateModel) model.subscriptions
+            else
+                model.subscriptions
+
+        newModel =
+            { model
+                | userModel = updateModel
+                , view = viewData
+                , subscriptions = subscriptionsData
+            }
+    in
+        if doUpdate states then
+            ( newModel
+            , updateCmd
+            )
+        else
+            ( newModel, Cmd.none )
 
 
-view :Model userModel userMsg -> Html.Html userMsg
+view : Model userModel userMsg -> Html.Html userMsg
 view model =
-  model.view
+    model.view
 
 
 subscriptions : Model userModel userMsg -> Sub userMsg
 subscriptions model =
-  model.subscriptions
+    Dict.toList model.subscriptions
+        |> List.map (\( k, v ) -> v)
+        |> Sub.batch
+
+
+urlUpdate : (navData -> userModel -> ( userModel, Cmd userMsg )) -> navData -> Model userModel userMsg -> ( Model userModel userMsg, Cmd userMsg )
+urlUpdate userUrlUpdate navData model =
+    let
+        -- urlUpdateData : ( userModel, Cmd userMsg ) -- Broken in Elm right now due to annotation names not being shared in outer/inner scopes
+        urlUpdateData =
+            userUrlUpdate navData model.userModel
+
+        ( userModel, userCmd ) =
+            urlUpdateData
+    in
+        ( { model | userModel = userModel }
+        , userCmd
+        )
 
 
 {-|
@@ -115,25 +170,24 @@ This can be used via Html.App.programWithFlags like:
         }
       )
 -}
-programExBuilderWithFlags
-    : { init : flags -> ( userModel, Cmd userMsg )
-      , filters : userMsg -> userModel -> ( userMsg, States )
-      , update : userMsg ->  userModel -> ( userModel, Cmd userMsg )
-      , view : userModel -> Html.Html userMsg
-      , subscriptions : userModel -> Sub userMsg
-      }
+programExBuilderWithFlags :
+    { init : flags -> ( userModel, Cmd userMsg )
+    , filters : userMsg -> userModel -> ( userMsg, States userModel userMsg )
+    , update : userMsg -> userModel -> ( userModel, Cmd userMsg )
+    , view : userModel -> Html.Html userMsg
+    , subscriptions : userModel -> Sub userMsg
+    }
     -> { init : flags -> ( Model userModel userMsg, Cmd userMsg )
-      , update : userMsg -> Model userModel userMsg -> ( Model userModel userMsg, Cmd userMsg )
-      , view : Model userModel userMsg -> Html.Html userMsg
-      , subscriptions : Model userModel userMsg -> Sub userMsg
-      }
+       , update : userMsg -> Model userModel userMsg -> ( Model userModel userMsg, Cmd userMsg )
+       , view : Model userModel userMsg -> Html.Html userMsg
+       , subscriptions : Model userModel userMsg -> Sub userMsg
+       }
 programExBuilderWithFlags app =
-      { init=flagsInit app.init
-      , update=update app.filters app.update app.view app.subscriptions
-      , view=view
-      , subscriptions=subscriptions
-      }
-
+    { init = flagsInit app.init
+    , update = update app.filters app.update app.view app.subscriptions
+    , view = view
+    , subscriptions = subscriptions
+    }
 
 
 {-|
@@ -142,7 +196,7 @@ Pass in the usual callbacks and it returns a built callback set.
 This can be used via Html.App.programWithFlags like:
 
     Navigation.programWithFlags urlParser
-      { programExBuilderWithFlagsAndNavigation
+      ( programExBuilderWithFlagsAndNavigation
         { init=init
         , filter=filter
         , update=update
@@ -150,26 +204,26 @@ This can be used via Html.App.programWithFlags like:
         , subscriptions=subscriptions
         , urlUpdate=urlUpdate
         }
-      }
+      )
 -}
-programExBuilderWithFlagsAndNavigation
-    : { init : flags -> ( userModel, Cmd userMsg )
-      , filters : userMsg -> userModel -> ( userMsg, States )
-      , update : userMsg ->  userModel -> ( userModel, Cmd userMsg )
-      , view : userModel -> Html.Html userMsg
-      , subscriptions : userModel -> Sub userMsg
-      , urlUpdate : data -> userModel -> (userModel, Cmd userMsg)
-      }
-    -> { init : flags -> ( Model userModel userMsg, Cmd userMsg )
-      , update : userMsg -> Model userModel userMsg -> ( Model userModel userMsg, Cmd userMsg )
-      , view : Model userModel userMsg -> Html.Html userMsg
-      , subscriptions : Model userModel userMsg -> Sub userMsg
-      , urlUpdate : data -> userModel -> (userModel, Cmd userMsg)
-      }
+programExBuilderWithFlagsAndNavigation :
+    { init : flags -> navParseResult -> ( userModel, Cmd userMsg )
+    , filters : userMsg -> userModel -> ( userMsg, States userModel userMsg )
+    , update : userMsg -> userModel -> ( userModel, Cmd userMsg )
+    , view : userModel -> Html.Html userMsg
+    , subscriptions : userModel -> Sub userMsg
+    , urlUpdate : navData -> userModel -> ( userModel, Cmd userMsg )
+    }
+    -> { init : flags -> navParseResult -> ( Model userModel userMsg, Cmd userMsg )
+       , update : userMsg -> Model userModel userMsg -> ( Model userModel userMsg, Cmd userMsg )
+       , view : Model userModel userMsg -> Html.Html userMsg
+       , subscriptions : Model userModel userMsg -> Sub userMsg
+       , urlUpdate : navData -> Model userModel userMsg -> ( Model userModel userMsg, Cmd userMsg )
+       }
 programExBuilderWithFlagsAndNavigation app =
-      { init=flagsInit app.init
-      , update=update app.filters app.update app.view app.subscriptions
-      , view=view
-      , subscriptions=subscriptions
-      , urlUpdate=app.urlUpdate
-      }
+    { init = flagsNavInit app.init
+    , update = update app.filters app.update app.view app.subscriptions
+    , view = view
+    , subscriptions = subscriptions
+    , urlUpdate = urlUpdate app.urlUpdate
+    }
