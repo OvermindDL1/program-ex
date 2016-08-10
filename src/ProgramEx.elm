@@ -16,37 +16,47 @@ type alias Model userModel userMsg =
     }
 
 
-flagsInit : (flags -> ( userModel, Cmd userMsg )) -> flags -> ( Model userModel userMsg, Cmd userMsg )
-flagsInit userInit flags =
+flagsInit :
+  { app
+  | init : flags -> ( userModel, Cmd userMsg )
+  , view : userModel -> Html.Html userMsg
+  , subscriptions : userModel -> Sub userMsg
+  } -> flags -> ( Model userModel userMsg, Cmd userMsg )
+flagsInit app flags =
     let
         -- stateInit : ( userModel, Cmd userMsg ) -- Broken in Elm right now due to annotation names not being shared in outer/inner scopes
         stateInit =
-            userInit flags
+            app.init flags
 
         ( initModel, initCmd ) =
             stateInit
     in
         ( { userModel = initModel
-          , view = Html.div [] []
-          , subscriptions = Dict.empty
+          , view = app.view initModel
+          , subscriptions = Dict.fromList [("", app.subscriptions initModel)]
           }
         , initCmd
         )
 
 
-flagsNavInit : (flags -> navParseResult -> ( userModel, Cmd userMsg )) -> flags -> navParseResult -> ( Model userModel userMsg, Cmd userMsg )
-flagsNavInit userInit flags navData =
+flagsNavInit :
+  { app
+  | init : flags -> navParseResult -> ( userModel, Cmd userMsg )
+  , view : userModel -> Html.Html userMsg
+  , subscriptions : userModel -> Sub userMsg
+  } -> flags -> navParseResult -> ( Model userModel userMsg, Cmd userMsg )
+flagsNavInit app flags navData =
     let
         -- stateInit : ( userModel, Cmd userMsg ) -- Broken in Elm right now due to annotation names not being shared in outer/inner scopes
         stateInit =
-            userInit flags navData
+            app.init flags navData
 
         ( initModel, initCmd ) =
             stateInit
     in
         ( { userModel = initModel
-          , view = Html.div [] []
-          , subscriptions = Dict.empty
+          , view = app.view initModel
+          , subscriptions = Dict.fromList [("", app.subscriptions initModel)]
           }
         , initCmd
         )
@@ -183,7 +193,7 @@ programExBuilderWithFlags :
        , subscriptions : Model userModel userMsg -> Sub userMsg
        }
 programExBuilderWithFlags app =
-    { init = flagsInit app.init
+    { init = flagsInit app
     , update = update app.filters app.update app.view app.subscriptions
     , view = view
     , subscriptions = subscriptions
@@ -221,7 +231,7 @@ programExBuilderWithFlagsAndNavigation :
        , urlUpdate : navData -> Model userModel userMsg -> ( Model userModel userMsg, Cmd userMsg )
        }
 programExBuilderWithFlagsAndNavigation app =
-    { init = flagsNavInit app.init
+    { init = flagsNavInit app
     , update = update app.filters app.update app.view app.subscriptions
     , view = view
     , subscriptions = subscriptions
