@@ -17,10 +17,6 @@ Example usage via in a filter callback:
 
     filters : Msg -> Model -> ( Msg, States Model Msg )
     filters msg model =
-        let
-            log =
-                debug_log (model.programFlags.debug_log |> Maybe.withDefault False) "filters" ( msg, model )
-        in
             case msg of
                 Helpers helpersMsg ->
                     ( msg
